@@ -1,0 +1,187 @@
+--====================================
+-- CUBNIT - VERSÃO 100% (LIMPEZA TOTAL + CÓPIA)
+--====================================
+
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local function GetRemote(name)
+    return ReplicatedStorage:FindFirstChild(name, true)
+end
+
+local Remotes = {
+    Wear = GetRemote("Wear"),
+    ChangeCharacterBody = GetRemote("ChangeCharacterBody"),
+    ChangeBodyColor = GetRemote("ChangeBodyColor"),
+    RPNameText = GetRemote("RPNameText")
+}
+
+if CoreGui:FindFirstChild("CubnitTest_Aba3") then
+    CoreGui:FindFirstChild("CubnitTest_Aba3"):Destroy()
+end
+
+-- FUNÇÃO DE CÓPIA COM LIMPEZA PRÉVIA
+local function CopyAvatarLogic(targetName)
+    local TPlayer = Players:FindFirstChild(targetName)
+    if not TPlayer or not TPlayer.Character then return end
+    
+    local LP = Players.LocalPlayer
+    local THum = TPlayer.Character:FindFirstChildOfClass("Humanoid")
+    local LHum = LP.Character:FindFirstChildOfClass("Humanoid")
+    
+    if THum and LHum and Remotes.Wear then
+        -- 1. CAPTURAR DESCRIÇÕES
+        local LDesc = LHum:GetAppliedDescription()
+        local PDesc = THum:GetAppliedDescription()
+        
+        -- [PASSO 0]: PURIFICAÇÃO (Remover tudo o que eu estou usando agora)
+        -- Isso evita que acessórios antigos fiquem "grudados" na skin nova
+        local function ClearCurrent()
+            -- Remover Roupas e Face (ID 0 no Brookhaven costuma resetar)
+            Remotes.Wear:InvokeServer(0) -- Reset geral de roupas se o jogo suportar
+            
+            -- Remover todos os acessórios atuais um por um
+            local myAccessories = LDesc:GetAccessories(true)
+            for _, acc in ipairs(myAccessories) do
+                if acc.AssetId then
+                    Remotes.Wear:InvokeServer(tonumber(acc.AssetId))
+                    -- No Brookhaven, disparar o ID do que você já usa remove o item
+                end
+            end
+            task.wait(0.5) -- Pausa para o servidor registrar a limpeza
+        end
+        
+        ClearCurrent()
+
+        -- [PASSO 1]: ESCALAS E CORPO
+        pcall(function()
+            LHum.HeadScale.Value = PDesc.HeadScale
+            LHum.HeightScale.Value = PDesc.HeightScale
+            LHum.WidthScale.Value = PDesc.WidthScale
+            LHum.DepthScale.Value = PDesc.DepthScale
+            LHum.BodyTypeScale.Value = PDesc.BodyTypeScale
+            LHum.ProportionScale.Value = PDesc.ProportionScale
+        end)
+
+        local argsBody = {[1] = {PDesc.Torso, PDesc.RightArm, PDesc.LeftArm, PDesc.RightLeg, PDesc.LeftLeg, PDesc.Head}}
+        Remotes.ChangeCharacterBody:InvokeServer(unpack(argsBody))
+        task.wait(0.8)
+
+        -- FUNÇÃO AUXILIAR DE VESTIR
+        local function SafeWear(id)
+            if id and tonumber(id) ~= 0 then
+                Remotes.Wear:InvokeServer(tonumber(id))
+                task.wait(0.35)
+            end
+        end
+
+        -- [PASSO 2]: PELE E ROSTO
+        local SkinColor = TPlayer.Character:FindFirstChild("Body Colors")
+        if SkinColor and Remotes.ChangeBodyColor then
+            Remotes.ChangeBodyColor:FireServer(tostring(SkinColor.HeadColor))
+        end
+        SafeWear(PDesc.Face)
+
+        -- [PASSO 3]: ROUPAS
+        SafeWear(PDesc.Shirt)
+        SafeWear(PDesc.Pants)
+
+        -- [PASSO 4]: ACESSÓRIOS DO ALVO
+        for _, acc in ipairs(PDesc:GetAccessories(true)) do
+            SafeWear(acc.AssetId)
+        end
+        
+        -- [PASSO 5]: ANIMAÇÕES
+        local anims = {PDesc.IdleAnimation, PDesc.WalkAnimation, PDesc.RunAnimation, PDesc.JumpAnimation}
+        for _, a in ipairs(anims) do
+            SafeWear(a)
+        end
+
+        -- [PASSO 6]: ROLEPLAY DATA
+        local Bag = TPlayer:FindFirstChild("PlayersBag")
+        if Bag and Remotes.RPNameText then
+            if Bag:FindFirstChild("RPName") then Remotes.RPNameText:FireServer("RolePlayName", Bag.RPName.Value) end
+            if Bag:FindFirstChild("RPBio") then Remotes.RPNameText:FireServer("RolePlayBio", Bag.RPBio.Value) end
+        end
+    end
+end
+
+-- INTERFACE GRÁFICA (MESMA ESTRUTURA)
+local function CreateUI()
+    local Gui = Instance.new("ScreenGui", CoreGui)
+    Gui.Name = "CubnitTest_Aba3"
+    
+    local MainFrame = Instance.new("Frame", Gui)
+    MainFrame.Size = UDim2.new(0, 250, 0, 200)
+    MainFrame.Position = UDim2.new(0.5, -125, 0.5, -100)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    MainFrame.Draggable = true
+    MainFrame.Active = true
+    Instance.new("UICorner", MainFrame)
+    Instance.new("UIStroke", MainFrame).Color = Color3.fromRGB(0, 180, 255)
+
+    local Title = Instance.new("TextLabel", MainFrame)
+    Title.Size = UDim2.new(1, 0, 0, 40)
+    Title.Text = "CUBNIT - TOTAL CLEAN CLONE"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.BackgroundTransparency = 1
+
+    local SelectedName = ""
+
+    local SelBtn = Instance.new("TextButton", MainFrame)
+    SelBtn.Size = UDim2.new(0.9, 0, 0, 40)
+    SelBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
+    SelBtn.Text = "ESCOLHER ALVO"
+    SelBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 255)
+    SelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Instance.new("UICorner", SelBtn)
+
+    local CopyBtn = Instance.new("TextButton", MainFrame)
+    CopyBtn.Size = UDim2.new(0.9, 0, 0, 40)
+    CopyBtn.Position = UDim2.new(0.05, 0, 0.60, 0)
+    CopyBtn.Text = "LIMPAR & COPIAR"
+    CopyBtn.BackgroundColor3 = Color3.fromRGB(0, 160, 80)
+    CopyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Instance.new("UICorner", CopyBtn)
+
+    local List = Instance.new("ScrollingFrame", Gui)
+    List.Size = UDim2.new(0, 180, 0, 200)
+    List.Position = UDim2.new(0.5, 135, 0.5, -100)
+    List.Visible = false
+    List.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    Instance.new("UIListLayout", List)
+
+    SelBtn.MouseButton1Click:Connect(function()
+        List.Visible = not List.Visible
+        if List.Visible then
+            for _, v in pairs(List:GetChildren()) do if v:IsA("TextButton") then v:Destroy() end end
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= Players.LocalPlayer then
+                    local b = Instance.new("TextButton", List)
+                    b.Size = UDim2.new(1, 0, 0, 35)
+                    b.Text = p.Name
+                    b.MouseButton1Click:Connect(function()
+                        SelectedName = p.Name
+                        SelBtn.Text = p.Name
+                        List.Visible = false
+                    end)
+                end
+            end
+        end
+    end)
+
+    CopyBtn.MouseButton1Click:Connect(function()
+        if SelectedName ~= "" then
+            CopyBtn.Text = "PURIFICANDO CORPO..."
+            CopyAvatarLogic(SelectedName)
+            CopyBtn.Text = "CÓPIA LIMPA SUCESSO!"
+            task.wait(1.5)
+            CopyBtn.Text = "LIMPAR & COPIAR"
+        end
+    end)
+end
+
+task.spawn(CreateUI)
+
